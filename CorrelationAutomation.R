@@ -1,12 +1,18 @@
 # Install and load required packages (update them daily)
 install.packages(c("quantmod", "urca", "tseries"))
 
+# Install and load required packages (update them daily)
+
 library(quantmod)
 library(urca)
 library(tseries)
 
 # User inputs
-stock_list <- c("PFE", "LLY")
+stock_list <- c("NVDA", "AAPL", "GOOG", "MSFT", "AMZN", "AVGO", "META", "TSM", "TSLA",
+                "TCEHY", "ORCL", "NFLX", "ASML", "PLTR", "IBM", "SAP", "AMD", "CSCO",
+                "TXN", "KLAC",
+                "LLY", "JNJ", "ABBV", "UNH", "AZN", "NVS", "MRK", "ISRG", "ABT",
+                "TMO", "PFE", "BMY", "GILD", "ZBH", "MDT", "DHR", "BAX", "CI", "CVS", "HCA")
 start_date <- Sys.Date() - 90
 end_date <- Sys.Date()
 
@@ -53,9 +59,12 @@ pairs_trading_signal <- function(ticker1, ticker2, start_date, end_date) {
     eg_stat = eg_summary@teststat,
     eg_crit_values = eg_summary@cval,
     adf_p_value = adf_test$p.value,
-    z_score = z_score
+    z_score = z_score,
+    spread_mean = spread_mean,
+    spread_sd = spread_sd,
+    latest_spread = as.numeric(latest_spread)
   )
-}
+} 
 
 cat("Starting pairs analysis...\n")
 for (pair in all_pairs) {
@@ -114,4 +123,55 @@ if (nrow(short_pairs) > 0) {
   }
 } else {
   cat("No pairs to SHORT at this time.\n")
-} 
+}
+
+# EXIT SIGNALS: For positions outside ±1.5 SD, show the 1.4 SD exit level
+cat("\n--- EXIT SIGNALS ---\n")
+
+# Exit signals for LONG positions (z-score < -1.5)
+if (nrow(long_pairs) > 0) {
+  cat("EXIT levels for LONG positions (close when spread reaches these levels):\n")
+  for (i in 1:nrow(long_pairs)) {
+    parts <- strsplit(long_pairs$pair[i], "-")[[1]]
+    # Calculate the spread mean and SD from the results
+    spread_mean <- long_pairs$spread_mean[i]
+    spread_sd <- long_pairs$spread_sd[i]
+    latest_spread <- long_pairs$latest_spread[i]
+    # Exit target is mean -  0.75*SD (coming up from below)
+    exit_target <- spread_mean - 0.75*spread_sd
+    exit_z_score <- -0.75
+    # Calculate distance to exit
+    spread_distance <- exit_target - latest_spread
+    cat(sprintf("  %s: EXIT when spread >= %.2f\n", long_pairs$pair[i], exit_target))
+    cat(sprintf("    Current spread: %.2f, Exit spread: %.2f, Distance to exit: %.2f\n",
+                latest_spread, exit_target, spread_distance))
+    cat(sprintf("    Mean: %.2f, SD: %.2f, Current z-score: %.2f, Exit z-score: %.2f\n",
+                spread_mean, spread_sd, long_pairs$z_score[i], exit_z_score))
+  }
+} else {
+  cat("No LONG positions requiring exit monitoring.\n")
+}
+
+# Exit signals for SHORT positions (z-score > 1.5)
+if (nrow(short_pairs) > 0) {
+  cat("\nEXIT levels for SHORT positions (close when spread reaches these levels):\n")
+  for (i in 1:nrow(short_pairs)) {
+    parts <- strsplit(short_pairs$pair[i], "-")[[1]]
+    # Calculate the spread mean and SD from the results
+    spread_mean <- short_pairs$spread_mean[i]
+    spread_sd <- short_pairs$spread_sd[i]
+    latest_spread <- short_pairs$latest_spread[i]
+    # Exit target is mean + 0.75 * SD (coming down from above)
+    exit_target <- spread_mean + 0.75*spread_sd
+    exit_z_score <- 0.75
+    # Calculate distance to exit
+    spread_distance <- latest_spread - exit_target
+    cat(sprintf("  %s: EXIT when spread <= %.2f\n", short_pairs$pair[i], exit_target))
+    cat(sprintf("    Current spread: %.2f, Exit spread: %.2f, Distance to exit: %.2f\n",
+                latest_spread, exit_target, spread_distance))
+    cat(sprintf("    Mean: %.2f, SD: %.2f, Current z-score: %.2f, Exit z-score: %.2f\n",
+                spread_mean, spread_sd, short_pairs$z_score[i], exit_z_score))
+  }
+} else {
+  cat("No SHORT positions requiring exit monitoring.\n")
+}
